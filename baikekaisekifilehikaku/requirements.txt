@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+plotly
+geopy
+folium
+streamlit-folium
+google-generativeai
