@@ -308,3 +308,4 @@ if 'df_input' in locals() and df_input is not None:
                     st.info("GPSデータ (Latitude, Longitude) がCSVファイルにないため、地図は表示できません。")
     else:
         st.info("サイドバーから比較データを含むCSVファイルを1つアップロードしてください。")
+        # test comment
