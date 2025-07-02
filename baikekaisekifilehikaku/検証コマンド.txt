@@ -1,0 +1,2 @@
+cd C:\Users\creosetup\source\repos\baikekaisekifilehikaku\baikekaisekifilehikaku
+streamlit run baikekaisekifilehikaku.py

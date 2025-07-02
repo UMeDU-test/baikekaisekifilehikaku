@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36202.13 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "baikekaisekifilehikaku", "baikekaisekifilehikaku\baikekaisekifilehikaku.pyproj", "{42FF4588-2F0B-497C-8C7A-8405F6D41E4D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{42FF4588-2F0B-497C-8C7A-8405F6D41E4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{42FF4588-2F0B-497C-8C7A-8405F6D41E4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4E2B6683-AC0A-4658-A79D-0CA6D79C59EC}
+	EndGlobalSection
+EndGlobal

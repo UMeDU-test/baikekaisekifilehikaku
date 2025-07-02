@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ベストラップ結合ツール v3</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Meiryo, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            max-width: 700px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #005a9e;
+            border-bottom: 2px solid #005a9e;
+            padding-bottom: 5px;
+        }
+        .file-input-area, .action-area {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #fff;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input[type="file"] {
+            display: block;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #0078d4;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:disabled {
+            background-color: #a0a0a0;
+            cursor: not-allowed;
+        }
+        button:hover:enabled {
+            background-color: #005a9e;
+        }
+        #log {
+            white-space: pre-wrap;
+            background-color: #2b2b2b;
+            color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            min-height: 100px;
+            border: 1px solid #555;
+        }
+        .file-name {
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>ベストラップ結合ツール v3</h1>
+    <p>2つのCSVファイルから、<strong>1周目と最終周を除いた</strong>ベストラップを抽出し、1つのCSVファイルに結合します。<br>
+    結合後の「Lap」列は、1つ目のファイルを「A」、2つ目のファイルを「B」として区別されます。</p>
+
+    <div class="file-input-area">
+        <h2>1. ファイル選択</h2>
+        <label for="file1">1つ目のCSVファイル (Lap -> A):</label>
+        <input type="file" id="file1" accept=".csv">
+        <span id="fileName1" class="file-name">選択されていません</span>
+
+        <label for="file2">2つ目のCSVファイル (Lap -> B):</label>
+        <input type="file" id="file2" accept=".csv">
+        <span id="fileName2" class="file-name">選択されていません</span>
+    </div>
+
+    <div class="action-area">
+        <h2>2. 実行</h2>
+        <button id="processBtn" disabled>結合してダウンロード</button>
+    </div>
+
+    <h2>3. 処理ログ</h2>
+    <div id="log"></div>
+
+    <script>
+        const file1Input = document.getElementById('file1');
+        const file2Input = document.getElementById('file2');
+        const fileName1Span = document.getElementById('fileName1');
+        const fileName2Span = document.getElementById('fileName2');
+        const processBtn = document.getElementById('processBtn');
+        const logDiv = document.getElementById('log');
+
+        let file1 = null;
+        let file2 = null;
+
+        function updateButtonState() {
+            if (file1 && file2) {
+                processBtn.disabled = false;
+            } else {
+                processBtn.disabled = true;
+            }
+        }
+
+        function log(message) {
+            logDiv.textContent += message + '\n';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        file1Input.addEventListener('change', (e) => {
+            file1 = e.target.files[0];
+            fileName1Span.textContent = file1 ? file1.name : '選択されていません';
+            updateButtonState();
+        });
+
+        file2Input.addEventListener('change', (e) => {
+            file2 = e.target.files[0];
+            fileName2Span.textContent = file2 ? file2.name : '選択されていません';
+            updateButtonState();
+        });
+
+        processBtn.addEventListener('click', async () => {
+            logDiv.textContent = '';
+            log('処理を開始します...');
+            processBtn.disabled = true;
+
+            try {
+                const bestLap1 = await getBestLapData(file1, 'A');
+                const bestLap2 = await getBestLapData(file2, 'B');
+
+                if (bestLap1 && bestLap2) {
+                    const header = bestLap1.header;
+                    const combinedData = [header, ...bestLap1.rows, ...bestLap2.rows];
+                    const csvContent = combinedData.map(row => row.join(',')).join('\r\n');
+                    
+                    log('結合が完了しました。ダウンロードを開始します...');
+                    downloadCsv(csvContent, 'best_laps_combined.csv');
+                } else {
+                    log('エラーが発生したため、処理を中断しました。');
+                }
+            } catch (error) {
+                log('致命的なエラーが発生しました: ' + error.message);
+            } finally {
+                processBtn.disabled = false;
+            }
+        });
+
+        async function getBestLapData(file, lapPrefix) {
+            log(`ファイルを処理中: "${file.name}"`);
+            const text = await file.text();
+            const lines = text.trim().split(/\r?\n/);
+            const header = lines[0].split(',');
+            const rows = lines.slice(1).map(line => line.split(','));
+
+            const lapIndex = header.indexOf('Lap');
+            const timeIndex = header.indexOf('Time');
+
+            if (lapIndex === -1 || timeIndex === -1) {
+                log(`エラー: "${file.name}" に'Lap'または'Time'列が見つかりません。`);
+                return null;
+            }
+
+            const lapGroups = {};
+            rows.forEach(row => {
+                const lapNumber = row[lapIndex];
+                if (!lapGroups[lapNumber]) {
+                    lapGroups[lapNumber] = [];
+                }
+                lapGroups[lapNumber].push(row);
+            });
+            
+            // 全ラップ番号を数値として取得し、昇順にソート
+            const allLapNumbers = Object.keys(lapGroups).map(Number).sort((a, b) => a - b);
+
+            if (allLapNumbers.length < 3) {
+                log(`-> 警告: "${file.name}" のラップ数が3周未満のため、ベストラップを計算できません。`);
+                return null;
+            }
+
+            const firstLap = allLapNumbers[0];
+            const lastLap = allLapNumbers[allLapNumbers.length - 1];
+            log(`-> 1周目(Lap ${firstLap})と最終周(Lap ${lastLap})を計算から除外します。`);
+
+            let bestLapNumber = null;
+            let minTime = Infinity;
+
+            // 1周目と最終周を除いてベストラップを探索
+            for (const lapNumberStr in lapGroups) {
+                const lapNumber = Number(lapNumberStr);
+                if (lapNumber === firstLap || lapNumber === lastLap) {
+                    continue; // 1周目と最終周はスキップ
+                }
+
+                const lapRows = lapGroups[lapNumberStr];
+                const maxTime = Math.max(...lapRows.map(row => parseFloat(row[timeIndex])));
+                if (maxTime < minTime) {
+                    minTime = maxTime;
+                    bestLapNumber = lapNumberStr; // 元の文字列のキーを保持
+                }
+            }
+
+            if (bestLapNumber === null) {
+                log(`-> エラー: "${file.name}" で有効なベストラップが見つかりませんでした。`);
+                return null;
+            }
+            
+            const bestLapRows = lapGroups[bestLapNumber].map(row => {
+                const newRow = [...row];
+                newRow[lapIndex] = `${lapPrefix}-${bestLapNumber}`;
+                return newRow;
+            });
+
+            log(`-> ベストラップ: Lap ${bestLapNumber} (Time: ${minTime.toFixed(3)}) -> 新しいLap: ${lapPrefix}-${bestLapNumber}`);
+            return {
+                header: header,
+                rows: bestLapRows
+            };
+        }
+
+        function downloadCsv(csvContent, fileName) {
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    </script>
+</body>
+</html>
