@@ -9,33 +9,23 @@ import folium
 from streamlit_folium import st_folium
 import google.generativeai as genai
 
-# --- ★★★ パスワード認証機能 ★★★ ---
+# --- パスワード認証機能 ---
 def check_password():
-    """Returns `True` if the user has entered a correct password."""
-
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if "passwords" in st.secrets and st.session_state["password"] in st.secrets["passwords"].values():
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
     if st.session_state.get("password_correct", False):
         return True
-
+    st.set_page_config(layout="centered", page_title="Login - Race Data Dashboard")
     st.title("🏍️ Pro-Spec Race Data Dashboard")
     st.write("---")
-    st.text_input(
-        "パスワードを入力してください", type="password", on_change=password_entered, key="password"
-    )
-    if "password_correct" in st.session_state and not st.session_state.password_correct:
-        st.error("😕 パスワードが正しくありません。")
-    elif "password_correct" not in st.session_state:
-        st.info("このアプリケーションを閲覧するにはパスワードが必要です。")
+    password = st.text_input("パスワードを入力してください", type="password", key="password_input")
+    if st.button("ログイン", key="login_button"):
+        if hasattr(st.secrets, "passwords") and password in st.secrets.passwords.values():
+            st.session_state.password_correct = True
+            st.rerun()
+        else:
+            st.error("😕 パスワードが正しくありません。")
+    st.info("このアプリケーションを閲覧するにはパスワードが必要です。")
     return False
 
-# --- ★★★ ここで認証を呼び出し、パスが通らない場合は以降の処理を停止 ★★★ ---
 if not check_password():
     st.stop()
 
@@ -61,6 +51,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader("比較データを含むCSVファイルをアップロードしてください", type=["csv"])
     label1 = st.text_input("データ1のラベル", value="データセット1")
     label2 = st.text_input("データ2のラベル", value="データセット2")
+
 def load_and_split_data(file):
     if file is None: return None
     try:
@@ -68,16 +59,23 @@ def load_and_split_data(file):
         if 'Time' not in df.columns: st.error("CSVファイルに 'Time' 列が見つかりません。"); return None
         time_diffs = df['Time'].diff()
         split_index = time_diffs[time_diffs < 0].index.min()
-        if pd.isna(split_index): st.warning("ファイル内にデータの区切りが見つかりませんでした。1つの走行データとして扱います。"); df['Lap'] = 1; return df
+        if pd.isna(split_index):
+            st.warning("ファイル内にデータの区切りが見つかりませんでした。1つの走行データとして扱います。")
+            df['Lap'] = 1
+            return df
         st.success(f"{split_index}行目でデータの区切りを検出しました。")
         df1 = df.iloc[:split_index].copy(); df1['Lap'] = 1
         df2 = df.iloc[split_index:].copy(); df2['Lap'] = 2
         return pd.concat([df1, df2], ignore_index=True)
-    except Exception as e: st.error(f"ファイルの読み込みまたは分割処理中にエラー: {e}"); return None
+    except Exception as e:
+        st.error(f"ファイルの読み込みまたは分割処理中にエラー: {e}"); return None
+
 df_input = load_and_split_data(uploaded_file)
+
 if df_input is None:
     st.info("サイドバーから比較データを含むCSVファイルを1つアップロードしてください。")
     st.stop()
+    
 with st.sidebar.expander("ℹ️ デバッグ情報"):
     st.write("分割・結合後データ (先頭5行):"); st.dataframe(df_input.head())
     st.write("存在する列:", df_input.columns.tolist())
@@ -124,16 +122,17 @@ def process_race_data(input_df):
         processed_laps.append(lap_group)
     if not processed_laps: return pd.DataFrame()
     return pd.concat(processed_laps, ignore_index=True)
+
 @st.cache_data
 def get_comparison_laps(_processed_df, _label1, _label2):
     laps_to_plot_data = []; lap_labels_list = []
     lap1_data = _processed_df[_processed_df['Lap'] == 1].copy()
     if not lap1_data.empty:
-        lap1_data['Lap_Distance'] = lap1_data['Distance']
+        if 'Distance' in lap1_data.columns: lap1_data['Lap_Distance'] = lap1_data['Distance']
         laps_to_plot_data.append(lap1_data); lap_labels_list.append(_label1)
     lap2_data = _processed_df[_processed_df['Lap'] == 2].copy()
     if not lap2_data.empty:
-        lap2_data['Lap_Distance'] = lap2_data['Distance']
+        if 'Distance' in lap2_data.columns: lap2_data['Lap_Distance'] = lap2_data['Distance']
         laps_to_plot_data.append(lap2_data); lap_labels_list.append(_label2)
     if len(laps_to_plot_data) < 2: return [], []
     return laps_to_plot_data, lap_labels_list
@@ -187,7 +186,6 @@ def create_plotly_chart(_laps_to_plot, _lap_labels, _df_columns):
                 y_data = lap_data[plot_info['cols'][0]]
                 if 'transform' in plot_info: y_data = plot_info['transform'](y_data)
                 fig.add_trace(go.Scatter(x=lap_data['Lap_Distance'], y=y_data, mode='lines', name=current_label, legendgroup=current_label, showlegend=show_legend, line=dict(color=current_color)), row=row_num, col=1)
-    
     fig.update_layout(height=250 * num_plots, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), hovermode="x unified", autosize=True, margin=dict(l=40, r=40, b=40, t=60, pad=4), plot_bgcolor='rgba(240, 242, 246, 0.95)')
     for i, plot_info in enumerate(active_plots):
         row_num = i + 1; fig.update_yaxes(title_text=plot_info['yaxis_title'], row=row_num, col=1, secondary_y=False)
@@ -247,65 +245,94 @@ if 'df_input' in locals() and df_input is not None:
                         st.warning("レポートを生成するための比較データが不足しています。")
         with col2:
             st.subheader("🗺️ 走行ラインマップ")
+            
+            with st.container(border=True):
+                st.markdown("##### 🗺️ マーカー表示フィルター")
+                
+                # --- ★★★ UIのラベルを変更 ★★★ ---
+                marker_options = {
+                    "200m毎の距離": "distance",
+                    "TC介入 (34)": "tc",
+                    "Anti-jerk介入 (81)": "antijerk",
+                    "AFR": "ideal_af", # ラベル変更
+                    "リーンアングル": "deep_lean"  # ラベル変更
+                }
+                
+                selected_marker_labels = st.multiselect(
+                    "表示するマーカーの種類を選択:",
+                    options=list(marker_options.keys()),
+                    default=["200m毎の距離", "リーンアングル"] # デフォルト表示
+                )
+                selected_marker_keys = [marker_options[label] for label in selected_marker_labels]
+
             with st.container(border=True):
                 if 'Latitude' in df_processed.columns and 'Longitude' in df_processed.columns:
                     map_center = [df_processed['Latitude'].mean(), df_processed['Longitude'].mean()]
                     m = folium.Map(location=map_center, zoom_start=17, tiles='OpenStreetMap')
                     
-                    def plot_lap_on_map_with_all_markers(lap_data_df, parent_feature_group, tc_fg, antijerk_fg, ideal_af_fg, deep_lean_fg, color):
-                        if not lap_data_df.empty:
-                            points = list(zip(lap_data_df['Latitude'], lap_data_df['Longitude']))
-                            folium.PolyLine(points, color=color, weight=4, opacity=0.7).add_to(parent_feature_group)
-                            if 'Lap_Distance' in lap_data_df.columns:
-                                last_marker_distance = -200
-                                for _, row in lap_data_df.iterrows():
-                                    if row['Lap_Distance'] >= last_marker_distance + 200:
-                                        icon = folium.DivIcon(html=f'<div style="font-size: 9pt; color: {color}; font-weight: 600;">{int(row["Lap_Distance"])}</div>')
-                                        folium.Marker(location=[row['Latitude'], row['Longitude']], icon=icon, tooltip=f"Dist: {row['Lap_Distance']:.0f} m").add_to(parent_feature_group)
-                                        last_marker_distance = row['Lap_Distance']
-                            if 'TC_Intervention' in lap_data_df.columns:
-                                tc_zones = lap_data_df[lap_data_df['TC_Intervention'] == 34]
-                                for _, row in tc_zones.iterrows():
-                                    folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=5, color="orange", fill=True, tooltip=f"TC @ {row['Lap_Distance']:.0f}m").add_to(tc_fg)
-                                aj_zones = lap_data_df[lap_data_df['TC_Intervention'] == 81]
-                                for _, row in aj_zones.iterrows():
-                                    folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=5, color="cyan", fill=True, tooltip=f"Anti-jerk @ {row['Lap_Distance']:.0f}m").add_to(antijerk_fg)
-                            af_col_name = 'LAF1' if 'LAF1' in lap_data_df.columns else 'AFR'
-                            if af_col_name in lap_data_df.columns:
-                                afr_series = lap_data_df[af_col_name] * 14.7 if af_col_name == 'LAF1' else lap_data_df[af_col_name]
-                                ideal_af_zones = lap_data_df[(afr_series >= 13.0) & (afr_series <= 13.9)]
-                                for _, row in ideal_af_zones.iterrows():
-                                    current_af_value = afr_series.loc[row.name]
-                                    tooltip_text = f"Ideal AFR: {current_af_value:.2f}<br>Dist: {row['Lap_Distance']:.0f}m"
-                                    folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=4, color="purple", fill=True, tooltip=tooltip_text).add_to(ideal_af_fg)
-                            if 'Lean_Angle' in lap_data_df.columns:
-                                max_lean_right = lap_data_df['Lean_Angle'].max(); max_lean_left = lap_data_df['Lean_Angle'].min()
-                                deep_lean_zones = lap_data_df[(lap_data_df['Lean_Angle'] >= max_lean_right - 20) | (lap_data_df['Lean_Angle'] <= max_lean_left + 20)]
-                                for _, row in deep_lean_zones.iterrows():
-                                    folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=3, color=color, fill=False, tooltip=f"Lean: {row['Lean_Angle']:.1f}°").add_to(deep_lean_fg)
-                                peak_right_point = lap_data_df.loc[lap_data_df['Lean_Angle'].idxmax()]
-                                folium.Marker(location=(peak_right_point['Latitude'], peak_right_point['Longitude']), icon=folium.Icon(color='red', icon='star'), tooltip=f"Max Right Lean: {max_lean_right:.1f}°").add_to(deep_lean_fg)
-                                peak_left_point = lap_data_df.loc[lap_data_df['Lean_Angle'].idxmin()]
-                                folium.Marker(location=(peak_left_point['Latitude'], peak_left_point['Longitude']), icon=folium.Icon(color='blue', icon='star'), tooltip=f"Max Left Lean: {max_lean_left:.1f}°").add_to(deep_lean_fg)
-
                     lap_colors_map = ['#FF0000', '#0000FF']
-                    _, num_plots = create_plotly_chart(laps_to_plot, lap_labels, df_processed.columns)
-                    
-                    fg_tc = folium.FeatureGroup(name="TC介入 (34)", show=False).add_to(m)
-                    fg_antijerk = folium.FeatureGroup(name="Anti-jerk介入 (81)", show=False).add_to(m)
-                    fg_ideal_af = folium.FeatureGroup(name="Ideal AFR (13.0-13.9)", show=False).add_to(m)
-                    fg_deep_lean = folium.FeatureGroup(name="Deep Lean Angle", show=True).add_to(m)
                     
                     for i, lap_data in enumerate(laps_to_plot):
-                        legend_label = lap_labels[i]; color = lap_colors_map[i % len(lap_colors_map)]
+                        legend_label = lap_labels[i]
+                        color = lap_colors_map[i % len(lap_colors_map)]
+                        
                         parent_fg = folium.FeatureGroup(name=legend_label, show=True).add_to(m)
-                        plot_lap_on_map_with_all_markers(lap_data, parent_fg, fg_tc, fg_antijerk, fg_ideal_af, fg_deep_lean, color)
-                    
+                        points = list(zip(lap_data['Latitude'], lap_data['Longitude']))
+                        folium.PolyLine(points, color=color, weight=4, opacity=0.7).add_to(parent_fg)
+                        
+                        # --- ★★★ マーカー描画ロジックを修正・統合 ★★★ ---
+                        if "distance" in selected_marker_keys and 'Lap_Distance' in lap_data.columns:
+                            last_marker_distance = -200
+                            for _, row in lap_data.iterrows():
+                                if row['Lap_Distance'] >= last_marker_distance + 200:
+                                    icon = folium.DivIcon(html=f'<div style="font-size: 9pt; color: gray; font-weight: 600;">{int(row["Lap_Distance"])}</div>')
+                                    folium.Marker(location=[row['Latitude'], row['Longitude']], icon=icon, tooltip=f"Dist: {row['Lap_Distance']:.0f} m").add_to(parent_fg)
+                                    last_marker_distance = row['Lap_Distance']
+                        
+                        if "tc" in selected_marker_keys and 'TC_Intervention' in lap_data.columns:
+                            tc_zones = lap_data[lap_data['TC_Intervention'] == 34]
+                            for _, row in tc_zones.iterrows():
+                                folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=5, color="orange", fill=True, tooltip=f"TC @ {row.get('Lap_Distance', row['Time']):.0f}m").add_to(parent_fg)
+
+                        if "antijerk" in selected_marker_keys and 'TC_Intervention' in lap_data.columns:
+                            aj_zones = lap_data[lap_data['TC_Intervention'] == 81]
+                            for _, row in aj_zones.iterrows():
+                                folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=5, color="cyan", fill=True, tooltip=f"Anti-jerk @ {row.get('Lap_Distance', row['Time']):.0f}m").add_to(parent_fg)
+
+                        if "ideal_af" in selected_marker_keys:
+                            af_col_name = 'LAF1' if 'LAF1' in lap_data.columns else 'AFR'
+                            if af_col_name in lap_data.columns:
+                                afr_series = lap_data[af_col_name].copy()
+                                is_laf = (af_col_name == 'LAF1')
+                                if is_laf: afr_series *= 14.7
+                                ideal_af_zones = lap_data[(afr_series >= 13.0) & (afr_series <= 13.9)]
+                                for _, row in ideal_af_zones.iterrows():
+                                    folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=4, color="purple", fill=True, tooltip=f"AFR: {afr_series.loc[row.name]:.2f}").add_to(parent_fg)
+                        
+                        if "deep_lean" in selected_marker_keys and 'Lean_Angle' in lap_data.columns and not lap_data['Lean_Angle'].empty:
+                            # このロジックは前回と同じ
+                            right_lean = lap_data[lap_data['Lean_Angle'] > 0]
+                            if not right_lean.empty:
+                                max_lean_right = right_lean['Lean_Angle'].max()
+                                deep_lean_right = right_lean[right_lean['Lean_Angle'] >= max_lean_right - 20]
+                                for _, row in deep_lean_right.iterrows():
+                                    folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=3, color=color, fill=False, tooltip=f"Lean: {row['Lean_Angle']:.1f}°").add_to(parent_fg)
+                                peak_right_point = right_lean.loc[right_lean['Lean_Angle'].idxmax()]
+                                folium.Marker(location=(peak_right_point['Latitude'], peak_right_point['Longitude']), icon=folium.Icon(color='red', icon='star'), tooltip=f"Max Right Lean: {max_lean_right:.1f}°").add_to(parent_fg)
+                            left_lean = lap_data[lap_data['Lean_Angle'] < 0]
+                            if not left_lean.empty:
+                                max_lean_left = left_lean['Lean_Angle'].min()
+                                deep_lean_left = left_lean[left_lean['Lean_Angle'] <= max_lean_left + 20]
+                                for _, row in deep_lean_left.iterrows():
+                                    folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=3, color=color, fill=False, tooltip=f"Lean: {row['Lean_Angle']:.1f}°").add_to(parent_fg)
+                                peak_left_point = left_lean.loc[left_lean['Lean_Angle'].idxmin()]
+                                folium.Marker(location=(peak_left_point['Latitude'], peak_left_point['Longitude']), icon=folium.Icon(color='blue', icon='star'), tooltip=f"Max Left Lean: {max_lean_left:.1f}°").add_to(parent_fg)
+
                     folium.LayerControl(collapsed=False).add_to(m)
+                    _, num_plots = create_plotly_chart(laps_to_plot, lap_labels, df_processed.columns)
                     map_height = 250 * num_plots if 'num_plots' in locals() and num_plots > 0 else 600
-                    st_folium(m, width=None, height=map_height, key="folium_map")
+                    st_folium(m, width=None, height=map_height, key="folium_map_final")
                 else:
                     st.info("GPSデータ (Latitude, Longitude) がCSVファイルにないため、地図は表示できません。")
     else:
         st.info("サイドバーから比較データを含むCSVファイルを1つアップロードしてください。")
-        # test comment
