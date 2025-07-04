@@ -231,7 +231,7 @@ if 'df_input' in locals() and df_input is not None:
                 if fig_plotly:
                     st.plotly_chart(fig_plotly, use_container_width=True)
                 else:
-                    st.warning("グラフを描画するためのデータ列がCSVファイルに不足しています。")
+                    st.warning("グラフを描画するためのデータ列がCSVファイルに不足しています。サイドバーの「デバッグ情報」で列名を確認してください。")
             st.markdown("---")
             st.subheader("🤖 AIによる分析レポート")
             with st.container(border=True):
@@ -248,39 +248,22 @@ if 'df_input' in locals() and df_input is not None:
             
             with st.container(border=True):
                 st.markdown("##### 🗺️ マーカー表示フィルター")
-                
-                # --- ★★★ UIのラベルを変更 ★★★ ---
-                marker_options = {
-                    "200m毎の距離": "distance",
-                    "TC介入 (34)": "tc",
-                    "Anti-jerk介入 (81)": "antijerk",
-                    "AFR": "ideal_af", # ラベル変更
-                    "リーンアングル": "deep_lean"  # ラベル変更
-                }
-                
-                selected_marker_labels = st.multiselect(
-                    "表示するマーカーの種類を選択:",
-                    options=list(marker_options.keys()),
-                    default=["200m毎の距離", "リーンアングル"] # デフォルト表示
-                )
+                marker_options = {"200m毎の距離": "distance", "TC介入 (34)": "tc", "Anti-jerk介入 (81)": "antijerk", "AFR": "ideal_af", "リーンアングル": "deep_lean"}
+                selected_marker_labels = st.multiselect("表示するマーカーの種類を選択:", options=list(marker_options.keys()), default=["200m毎の距離", "リーンアングル"])
                 selected_marker_keys = [marker_options[label] for label in selected_marker_labels]
 
             with st.container(border=True):
                 if 'Latitude' in df_processed.columns and 'Longitude' in df_processed.columns:
                     map_center = [df_processed['Latitude'].mean(), df_processed['Longitude'].mean()]
                     m = folium.Map(location=map_center, zoom_start=17, tiles='OpenStreetMap')
-                    
                     lap_colors_map = ['#FF0000', '#0000FF']
                     
                     for i, lap_data in enumerate(laps_to_plot):
-                        legend_label = lap_labels[i]
-                        color = lap_colors_map[i % len(lap_colors_map)]
-                        
+                        legend_label = lap_labels[i]; color = lap_colors_map[i % len(lap_colors_map)]
                         parent_fg = folium.FeatureGroup(name=legend_label, show=True).add_to(m)
                         points = list(zip(lap_data['Latitude'], lap_data['Longitude']))
                         folium.PolyLine(points, color=color, weight=4, opacity=0.7).add_to(parent_fg)
                         
-                        # --- ★★★ マーカー描画ロジックを修正・統合 ★★★ ---
                         if "distance" in selected_marker_keys and 'Lap_Distance' in lap_data.columns:
                             last_marker_distance = -200
                             for _, row in lap_data.iterrows():
@@ -310,7 +293,6 @@ if 'df_input' in locals() and df_input is not None:
                                     folium.CircleMarker(location=(row['Latitude'], row['Longitude']), radius=4, color="purple", fill=True, tooltip=f"AFR: {afr_series.loc[row.name]:.2f}").add_to(parent_fg)
                         
                         if "deep_lean" in selected_marker_keys and 'Lean_Angle' in lap_data.columns and not lap_data['Lean_Angle'].empty:
-                            # このロジックは前回と同じ
                             right_lean = lap_data[lap_data['Lean_Angle'] > 0]
                             if not right_lean.empty:
                                 max_lean_right = right_lean['Lean_Angle'].max()
